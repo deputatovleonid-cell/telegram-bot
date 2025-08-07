@@ -1,6 +1,4 @@
-flask
+Flask
 openai
-pydub
 requests
 tiktoken
-ffmpeg‑python
