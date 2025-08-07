@@ -103,9 +103,9 @@ def webhook():
                 )
                 return jsonify({"status": "limit reached"})
             user_limits[chat_id][today] += 1
-            model = "deepseek/deepseek-chat"
+            model = "model = "mistralai/mixtral-8x7b"
         else:
-            model = "deepseek/deepseek-chat"
+            model = "deepseek/deepseek-v3-base"
 
         try:
             response = client.chat.completions.create(
@@ -147,5 +147,6 @@ def format_reply(text):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=81)
+
 
 
