@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 # 🔐 API ключи
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key="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"
+    api_key="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"
 )
 
 bot_token = "7558130234:AAF2y4_Uq51jlyur7ZJ0U7OcHJxFeC5-WFw"
@@ -147,4 +147,5 @@ def format_reply(text):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=81)
+
 
