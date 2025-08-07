@@ -1,35 +1,30 @@
 from flask import Flask, request, jsonify
-import openai
 import requests
-import os
 from datetime import datetime, timedelta
 
-# ✅ API ключ OpenRouter (уже встроен)
-openai.api_key = "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"
-openai.api_base = "https://openrouter.ai/api/v1"
-openai.api_type = "openai"
-openai.api_version = None
-openai.headers = {
-    "HTTP-Referer": "https://t.me/genesis_mobile_bot",  # ❗ Замени на ссылку на своего бота
-    "X-Title": "GPT-Telegram-Bot"
+app = Flask(__name__)
+
+# 🔐 OpenRouter API
+OPENROUTER_API_KEY = "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"
+headers = {
+    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    "HTTP-Referer": "https://t.me/genesis_mobile_bot",
+    "X-Title": "GPT-Telegram-Bot",
+    "Content-Type": "application/json"
 }
 
-# ✅ Telegram бот
+# 🤖 Telegram токен и адрес
 bot_token = "7558130234:AAF2y4_Uq51jlyur7ZJ0U7OcHJxFeC5-WFw"
 replit_url = "https://telegram-bot-pr1u.onrender.com"
 
-# ✅ Flask-приложение
-app = Flask(__name__)
-
-# Память
+# 📊 Память
 user_limits = {}
 user_pro = {}
 user_payment_pending = set()
 
-# ✅ Системный промпт
+# 🧠 Системная инструкция
 SYSTEM_PROMPT = '''
 Ты профессиональный AI-ассистент, эксперт в аналитике, коммуникации и деловом подходе.
-
 Отвечай:
 – Строго по сути, без "воды"
 – Структурировано, по пунктам (если можно), максимум 90 слов
@@ -39,7 +34,8 @@ SYSTEM_PROMPT = '''
 – Делай пробелы между абзацами для читабельности
 – Отвечай только на русском, узбекском или английском, в зависимости от запроса
 – Если запрос неполный — сначала уточни
-– Никакой лишней вежливости: без "рад помочь", только факты и полезность
+– Никакой лишней вежливости: без "рад помочь", "как я могу помочь", только факты и полезность
+– Если требуется — выдай ссылку по теме (если есть источник)
 '''
 
 @app.route('/')
@@ -65,7 +61,7 @@ def webhook():
         if query["data"] == "payment_sent":
             user_payment_pending.add(chat_id)
             send_message(chat_id, "📸 Пожалуйста, отправьте *фото квитанции* для подтверждения оплаты.")
-        return jsonify({"status": "callback handled"})
+        return jsonify({"status": "callback processed"})
 
     message = data["message"]
     chat_id = message["chat"]["id"]
@@ -75,13 +71,14 @@ def webhook():
         today = datetime.now().date()
         user_limits.setdefault(chat_id, {}).setdefault(today, 0)
         remaining = 2 - user_limits[chat_id][today]
-        model_info = "GPT-4 (PRO)" if chat_id in user_pro and datetime.now() < user_pro[chat_id] else "GPT‑3.5 (бесплатно)"
+        model_info = "DeepSeek Chat (PRO)" if chat_id in user_pro and datetime.now() < user_pro[chat_id] else "DeepSeek Chat (бесплатно)"
         send_message(chat_id, f"👋 Привет!\n\n🧠 *Модель*: {model_info}\n🔄 *Осталось запросов*: {remaining} из 2")
-        return jsonify({"status": "start"})
+        return jsonify({"status": "start message"})
 
     if "photo" in message:
         if chat_id in user_payment_pending:
-            expiration = datetime.now() + timedelta(days=30)
+            activation = datetime.now()
+            expiration = activation + timedelta(days=30)
             user_pro[chat_id] = expiration
             user_payment_pending.remove(chat_id)
             send_message(chat_id, f"✅ *PRO активирован!*\n@{username}\nДействует до {expiration.strftime('%d.%m.%Y')}")
@@ -96,34 +93,43 @@ def webhook():
     if "text" in message:
         text = message["text"].strip()
 
-        # 🔓 Бесплатный лимит
+        # 💳 Проверка лимита
         if chat_id not in user_pro or datetime.now() > user_pro[chat_id]:
             today = datetime.now().date()
             user_limits.setdefault(chat_id, {}).setdefault(today, 0)
             if user_limits[chat_id][today] >= 2:
                 send_message_with_button(
                     chat_id,
-                    "*✨ Бесплатно*: 2 запроса/день с GPT‑3.5\n🚀 *PRO*: 15 000 сум/мес — GPT‑4 без лимитов\n\nПереведи 15 000 сум на карту:\n\n`8600 4904 6804 4854`\n\nЗатем отправь фото квитанции и нажми кнопку ниже ⬇️",
+                    "*✨ Бесплатно*: 2 запроса/день\n🚀 *PRO*: 15 000 сум/мес — без лимитов\n\nПереведи 15 000 сум на карту:\n\n`8600 4904 6804 4854`\n\nЗатем отправь фото квитанции и нажми кнопку ниже ⬇️",
                     [[{"text": "Я оплатил ✅", "callback_data": "payment_sent"}]]
                 )
                 return jsonify({"status": "limit reached"})
             user_limits[chat_id][today] += 1
 
-        # ✅ Используем только одну бесплатную модель
-        model = "deepseek/deepseek-chat:free"
+        model = "deepseek/deepseek-chat"
 
+        # 🧠 Запрос к OpenRouter
         try:
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": text}
-                ]
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": text}
+                    ]
+                }
             )
-            reply = format_reply(response.choices[0].message["content"])
+
+            if response.status_code != 200:
+                raise Exception(f"Error code: {response.status_code} - {response.text}")
+
+            result = response.json()
+            reply = format_reply(result["choices"][0]["message"]["content"])
             send_message(chat_id, reply)
         except Exception as e:
-            send_message(chat_id, f"❌ Ошибка: {str(e)}")
+            send_message(chat_id, f"❌ Ошибка:\n\n{str(e)}")
 
     return jsonify({"status": "ok"})
 
@@ -152,6 +158,8 @@ def format_reply(text):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=81)
+
+
 
 
 
