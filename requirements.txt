@@ -3,4 +3,5 @@ openai
 requests
 tiktoken
 ffmpeg-python
+pydub
 
