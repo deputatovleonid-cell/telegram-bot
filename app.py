@@ -1,27 +1,23 @@
 from flask import Flask, request, jsonify
-from pydub import AudioSegment
 from openai import OpenAI
-import os
 import requests
+import os
 import tiktoken
-import re
 from datetime import datetime, timedelta
 
-# Подключение к OpenRouter
+# 🔐 API ключи
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key = "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"
+    api_key="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"
 )
 
-bot_token = '7558130234:AAF2y4_Uq51jlyur7ZJ0U7OcHJxFeC5-WFw'
-replit_url = 'https://c219359c-08f7-420e-bf35-f37c2e8bc484-00-2cd29q7115mi3.pike.replit.dev'
+bot_token = "7558130234:AAF2y4_Uq51jlyur7ZJ0U7OcHJxFeC5-WFw"
+replit_url = "https://telegram-bot-pr1u.onrender.com"
 
 app = Flask(__name__)
 
-# Хранилище сообщений и подписок
-user_messages = {}
 user_limits = {}
-user_pro = {}  # {chat_id: datetime}
+user_pro = {}
 user_payment_pending = set()
 
 SYSTEM_PROMPT = '''
@@ -41,15 +37,13 @@ SYSTEM_PROMPT = '''
 
 @app.route('/')
 def index():
-    return '✅ Бот запущен!\n\n💳 Карта для оплаты: `8600 4904 6804 4854` (нажмите для копирования)'
+    return '✅ Бот работает. Webhook активен.'
 
 @app.route('/setup')
 def setup():
     webhook_url = f'{replit_url}/webhook'
-    response = requests.post(
-        f'https://api.telegram.org/bot{bot_token}/setWebhook?url={webhook_url}'
-    )
-    return jsonify(response.json())
+    r = requests.post(f'https://api.telegram.org/bot{bot_token}/setWebhook?url={webhook_url}')
+    return jsonify(r.json())
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -71,118 +65,85 @@ def webhook():
     chat_id = message["chat"]["id"]
     username = message["from"].get("username", "пользователь")
 
-    if message.get("text") == "/start":
+    if "text" in message and message["text"] == "/start":
         today = datetime.now().date()
-        user_limits.setdefault(chat_id, {})
-        user_limits[chat_id].setdefault(today, 0)
+        user_limits.setdefault(chat_id, {}).setdefault(today, 0)
         remaining = 2 - user_limits[chat_id][today]
         model_info = "GPT-4 (PRO)" if chat_id in user_pro and datetime.now() < user_pro[chat_id] else "GPT-3.5 (бесплатно)"
         send_message(chat_id, f"👋 Привет!\n\n🧠 *Модель*: {model_info}\n🔄 *Осталось запросов*: {remaining} из 2")
         return jsonify({"status": "start message"})
 
-    if "voice" in message or "audio" in message:
-        send_message(chat_id, "❌ Я не могу обрабатывать *аудиосообщения*. Пожалуйста, отправьте текст. 🎤➡️💬")
-        return jsonify({"status": "voice ignored"})
-
     if "photo" in message:
         if chat_id in user_payment_pending:
-            activation_date = datetime.now()
-            expiration_date = activation_date + timedelta(days=30)
-            user_pro[chat_id] = expiration_date
+            activation = datetime.now()
+            expiration = activation + timedelta(days=30)
+            user_pro[chat_id] = expiration
             user_payment_pending.remove(chat_id)
-
-            send_message(chat_id, f"✅ *Подписка PRO активирована!*\n\n👤 @{username}\n📅 С {activation_date.strftime('%d.%m.%Y')} по {expiration_date.strftime('%d.%m.%Y')}\n\n🚀 Доступ к GPT‑4 без ограничений включён.")
+            send_message(chat_id, f"✅ *PRO активирован!*\n@{username}\nДействует до {expiration.strftime('%d.%m.%Y')}")
         else:
             send_message_with_button(
                 chat_id,
-                "📸 Фото получено, но оно не связано с оплатой. Если вы хотите подключить PRO, нажмите кнопку ниже.",
+                "📸 Фото получено, но оно не связано с оплатой.",
                 [[{"text": "Я оплатил ✅", "callback_data": "payment_sent"}]]
             )
         return jsonify({"status": "photo processed"})
 
     if "text" in message:
-        user_message = message["text"].strip()
+        text = message["text"].strip()
 
+        # лимит для бесплатного доступа
         if chat_id not in user_pro or datetime.now() > user_pro[chat_id]:
             today = datetime.now().date()
-            user_limits.setdefault(chat_id, {})
-            user_limits[chat_id].setdefault(today, 0)
+            user_limits.setdefault(chat_id, {}).setdefault(today, 0)
             if user_limits[chat_id][today] >= 2:
                 send_message_with_button(
                     chat_id,
-                    "*✨ Бесплатно*: до 2 запросов в день с GPT‑3.5\n🚀 *PRO‑подписка*: 15 000 сум/мес — GPT‑4 без лимитов\n\n👉 Чтобы подключить *PRO‑режим*:\n1. Переведи 15 000 сум на карту:\n\n`8600 4904 6804 4854` *(нажмите для копирования)*\n\n2. Отправь *квитанцию* (фото) сюда\n3. После оплаты нажми кнопку ниже ⬇️",
+                    "*✨ Бесплатно*: 2 запроса/день с GPT‑3.5\n🚀 *PRO*: 15 000 сум/мес — GPT‑4 без лимитов\n\nПереведи 15 000 сум на карту:\n\n`8600 4904 6804 4854`\n\nЗатем отправь фото квитанции и нажми кнопку ниже ⬇️",
                     [[{"text": "Я оплатил ✅", "callback_data": "payment_sent"}]]
                 )
                 return jsonify({"status": "limit reached"})
             user_limits[chat_id][today] += 1
-            model_name = "deepseek/deepseek-chat"
-            remaining = 2 - user_limits[chat_id][today]
-            send_message(chat_id, f"🧠 *GPT‑3.5* (бесплатно)\n🔄 Осталось запросов: {remaining} из 2")
+            model = "deepseek/deepseek-chat"
         else:
-            model_name = "deepseek/deepseek-chat"
+            model = "openchat/openchat-3.5-1210"
 
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
+            response = client.chat.completions.create(
+                model=model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message}
+                    {"role": "user", "content": text}
                 ]
             )
-
-            reply = completion.choices[0].message.content
-            reply = format_reply(reply)
+            reply = format_reply(response.choices[0].message.content)
             send_message(chat_id, reply)
-
         except Exception as e:
             send_message(chat_id, f"❌ Ошибка: {str(e)}")
 
     return jsonify({"status": "ok"})
 
 def send_message(chat_id, text):
-    return requests.post(
+    requests.post(
         f'https://api.telegram.org/bot{bot_token}/sendMessage',
-        data={
-            'chat_id': chat_id,
-            'text': text,
-            'parse_mode': 'Markdown'
-        }
+        data={'chat_id': chat_id, 'text': text, 'parse_mode': 'Markdown'}
     )
 
 def send_message_with_button(chat_id, text, buttons):
-    return requests.post(
+    requests.post(
         f'https://api.telegram.org/bot{bot_token}/sendMessage',
         json={
             'chat_id': chat_id,
             'text': text,
             'parse_mode': 'Markdown',
-            'reply_markup': {
-                'inline_keyboard': buttons
-            }
+            'reply_markup': {'inline_keyboard': buttons}
         }
     )
-
-def num_tokens_from_messages(messages, model="gpt-3.5-turbo"):
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
-
-    num_tokens = 0
-    for message in messages:
-        num_tokens += 4
-        for key, value in message.items():
-            num_tokens += len(encoding.encode(value))
-            if key == "name":
-                num_tokens -= 1
-    num_tokens += 2
-    return num_tokens
 
 def format_reply(text):
     words = text.split()
     if len(words) > 90:
         text = ' '.join(words[:90]) + '...'
-    text = text.replace("**", "*").replace("_", "_")
-    return text
+    return text.replace("**", "*").replace("_", "_")
 
-app.run(host='0.0.0.0', port=81)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=81)
