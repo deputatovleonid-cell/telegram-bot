@@ -1,27 +1,35 @@
 from flask import Flask, request, jsonify
-from openai import OpenAI
+import openai
 import requests
 import os
-import tiktoken
 from datetime import datetime, timedelta
 
-# 🔐 API ключи
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key="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"
-)
+# ✅ API ключ OpenRouter (уже встроен)
+openai.api_key = "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"
+openai.api_base = "https://openrouter.ai/api/v1"
+openai.api_type = "openai"
+openai.api_version = None
+openai.headers = {
+    "HTTP-Referer": "https://t.me/genesis_mobile_bot",  # ❗ Замени на ссылку на своего бота
+    "X-Title": "GPT-Telegram-Bot"
+}
 
+# ✅ Telegram бот
 bot_token = "7558130234:AAF2y4_Uq51jlyur7ZJ0U7OcHJxFeC5-WFw"
 replit_url = "https://telegram-bot-pr1u.onrender.com"
 
+# ✅ Flask-приложение
 app = Flask(__name__)
 
+# Память
 user_limits = {}
 user_pro = {}
 user_payment_pending = set()
 
+# ✅ Системный промпт
 SYSTEM_PROMPT = '''
 Ты профессиональный AI-ассистент, эксперт в аналитике, коммуникации и деловом подходе.
+
 Отвечай:
 – Строго по сути, без "воды"
 – Структурировано, по пунктам (если можно), максимум 90 слов
@@ -31,8 +39,7 @@ SYSTEM_PROMPT = '''
 – Делай пробелы между абзацами для читабельности
 – Отвечай только на русском, узбекском или английском, в зависимости от запроса
 – Если запрос неполный — сначала уточни
-– Никакой лишней вежливости: без "рад помочь", "как я могу помочь", только факты и полезность
-– Если требуется — выдай ссылку по теме (если есть источник)
+– Никакой лишней вежливости: без "рад помочь", только факты и полезность
 '''
 
 @app.route('/')
@@ -55,11 +62,10 @@ def webhook():
     if "callback_query" in data:
         query = data["callback_query"]
         chat_id = query["message"]["chat"]["id"]
-        message_id = query["message"]["message_id"]
         if query["data"] == "payment_sent":
             user_payment_pending.add(chat_id)
             send_message(chat_id, "📸 Пожалуйста, отправьте *фото квитанции* для подтверждения оплаты.")
-        return jsonify({"status": "callback processed"})
+        return jsonify({"status": "callback handled"})
 
     message = data["message"]
     chat_id = message["chat"]["id"]
@@ -69,14 +75,13 @@ def webhook():
         today = datetime.now().date()
         user_limits.setdefault(chat_id, {}).setdefault(today, 0)
         remaining = 2 - user_limits[chat_id][today]
-        model_info = "GPT-4 (PRO)" if chat_id in user_pro and datetime.now() < user_pro[chat_id] else "GPT-3.5 (бесплатно)"
+        model_info = "GPT-4 (PRO)" if chat_id in user_pro and datetime.now() < user_pro[chat_id] else "GPT‑3.5 (бесплатно)"
         send_message(chat_id, f"👋 Привет!\n\n🧠 *Модель*: {model_info}\n🔄 *Осталось запросов*: {remaining} из 2")
-        return jsonify({"status": "start message"})
+        return jsonify({"status": "start"})
 
     if "photo" in message:
         if chat_id in user_payment_pending:
-            activation = datetime.now()
-            expiration = activation + timedelta(days=30)
+            expiration = datetime.now() + timedelta(days=30)
             user_pro[chat_id] = expiration
             user_payment_pending.remove(chat_id)
             send_message(chat_id, f"✅ *PRO активирован!*\n@{username}\nДействует до {expiration.strftime('%d.%m.%Y')}")
@@ -91,7 +96,7 @@ def webhook():
     if "text" in message:
         text = message["text"].strip()
 
-        # лимит для бесплатного доступа
+        # 🔓 Бесплатный лимит
         if chat_id not in user_pro or datetime.now() > user_pro[chat_id]:
             today = datetime.now().date()
             user_limits.setdefault(chat_id, {}).setdefault(today, 0)
@@ -103,19 +108,19 @@ def webhook():
                 )
                 return jsonify({"status": "limit reached"})
             user_limits[chat_id][today] += 1
-            model = "model = deepseek/deepseek-chat-v3-0324:free"
-        else:
-            model = "deepseek/deepseek-r1-0528:free"
+
+        # ✅ Используем только одну бесплатную модель
+        model = "deepseek/deepseek-chat:free"
 
         try:
-            response = client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": text}
                 ]
             )
-            reply = format_reply(response.choices[0].message.content)
+            reply = format_reply(response.choices[0].message["content"])
             send_message(chat_id, reply)
         except Exception as e:
             send_message(chat_id, f"❌ Ошибка: {str(e)}")
@@ -147,6 +152,8 @@ def format_reply(text):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=81)
+
+
 
 
 
