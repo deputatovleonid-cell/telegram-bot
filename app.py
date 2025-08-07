@@ -105,7 +105,7 @@ def webhook():
             user_limits[chat_id][today] += 1
             model = "deepseek/deepseek-chat"
         else:
-            model = "openchat/openchat-3.5-1210"
+            model = "deepseek/deepseek-chat"
 
         try:
             response = client.chat.completions.create(
@@ -147,3 +147,4 @@ def format_reply(text):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=81)
+
