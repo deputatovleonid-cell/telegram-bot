@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 
 # 🔐 OpenRouter API
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 headers = {
     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
     "HTTP-Referer": "https://t.me/genesis_mobile_bot",
@@ -106,7 +106,7 @@ def webhook():
                 return jsonify({"status": "limit reached"})
             user_limits[chat_id][today] += 1
 
-        model = "deepseek/deepseek-chat"
+        model = "deepseek-ai/deepseek-chat"
 
         # 🧠 Запрос к OpenRouter
         try:
@@ -158,6 +158,7 @@ def format_reply(text):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=81)
+
 
 
 
