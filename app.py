@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 
 # 🔐 OpenRouter API
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 headers = {
     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
     "HTTP-Referer": "https://t.me/genesis_mobile_bot",
@@ -158,6 +158,7 @@ def format_reply(text):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=81)
+
 
 
 
