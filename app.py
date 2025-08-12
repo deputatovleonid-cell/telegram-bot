@@ -106,7 +106,7 @@ def webhook():
                 return jsonify({"status": "limit reached"})
             user_limits[chat_id][today] += 1
 
-        model = "deepseek-ai/deepseek-chat"
+        model = "model": "deepseek/deepseek-chat"
 
         # 🧠 Запрос к OpenRouter
         try:
@@ -158,6 +158,7 @@ def format_reply(text):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=81)
+
 
 
 
